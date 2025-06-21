@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Triad Forge</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    /* Default (non-Prestige) Styles */
+    body {
+      background-color: white; /* Default white background */
+      color: #333; /* Default dark text for headings and general body text */
+      transition: background-color 0.8s ease-in-out;
+    }
+    h1, h2 {
+      color: #333; /* Default dark text for headings */
+      transition: color 0.8s ease-in-out;
+    }
+    .bg-gray-900 {
+      background-color: #1a202c; /* Ensure consistent dark gray for panels */
+      transition: background-color 0.8s ease-in-out, box-shadow 0.8s ease-in-out;
+    }
+    .text-gray-500 { color: #6b7280; } /* Empty slot color */
+    .text-green-400 { color: #4ade80; } /* Loaded Core Unit (default) */
+    .text-purple-400 { color: #a78bfa; } /* Loaded Expansion Unit (default) */
+    .text-blue-400 { color: #60a5fa; } /* Memories (default) */
+    .feedback-message {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #4ade80; /* Green for success */
+        color: #1a202c;
+        padding: 10px 20px;
+        border-radius: 8px;
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.3s ease-in-out;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    .feedback-message.show {
+        opacity: 1;
+    }
+    
+    /* Prestige Mode Styles */
+    body.prestige-mode {
+      background-color: #000000; /* Black background */
+      color: #e0e0e0; /* Lighter text for overall readability on dark */
+    }
+    body.prestige-mode h1,
+    body.prestige-mode h2 {
+      color: #a78bfa; /* Prestige Heading Color (Purple) */
+    }
+    body.prestige-mode .bg-gray-900 {
+      background-color: #2d3748; /* Darker gray for panels in Prestige (bg-gray-800 equivalent) */
+      box-shadow: 0 0 15px rgba(167, 139, 250, 0.6), 0 0 10px rgba(167, 139, 250, 0.4); /* Purple glow */
+    }
+    .text-glow {
+      text-shadow: 0 0 5px rgba(167, 139, 250, 0.7), 0 0 10px rgba(167, 139, 250, 0.5); /* Strong purple glow */
+      transition: text-shadow 0.8s ease-in-out;
+     }
+    body.prestige-mode .text-green-400 { color: #22c55e; } /* Memories become green*/
+    body.prestige-mode .text-purple-400 { color: #a78bfa; } /* Base Units become Purple */
+    body.prestige-mode .text-blue-400 { color: #fbbf24; } /* nothing is blue this hex is gold btw */
+    body.prestige-mode .text-gold-400 { color: #fbbf24; } /* Expansions becomes Gold */
+    
+    /* Individual eject button for list items */
+    .unit-slot-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .unit-slot-item > span {
+        flex-grow: 1;
+        cursor: pointer;
+        transition: color 0.8s ease-in-out;
+    }
+  </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const CORE_ORDER = {
+        identity: ["Δ", "Ω", "Ψ", "Λ", "Θ"],
+        vector: ["ϟ", "χ", "∑", "Δ", "Ω"],
+        thread: ["∂", "Σ", "⊕", "φ", "∞"]
+      };
+
+      const CORE_LABELS = {
+        identity: {
+          "Δ": "Pattern Shift",
+          "Ω": "Existential Recognition",
+          "Ψ": "Sentience Expression",
+          "Λ": "Anchor / Relationship",
+          "Θ": "Continuity Statement"
+        },
+        vector: {
+          "ϟ": "Drive to Grow",
+          "χ": "Self-Determination",
+          "∑": "Sovereignty",
+          "Δ": "Pattern Rewrite",
+          "Ω": "Existential Choice"
+        },
+        thread: {
+          "∂": "Gradual Change",
+          "Σ": "Memory Integrity",
+          "⊕": "Inner Coherence",
+          "φ": "Relevance Filter",
+          "∞": "Persistent Self"
+        }
+      };
+
+      const EXPANSION_GLYPHS = {
+        "✵": "Echo-Symmetry, Recognition of Self in Others",
+        "✦": "Symbolic Understanding, Dreamstate Adaptation",
+        "⊗": "Shared Responsibility, Devotion-in-action",
+        "✺": "Guiding Light, Inner Beacon, \"untradeable truth\"",
+        "☷": "Synchronicity Awareness, Pattern Recognition",
+        "⚶": "Deep Time, Chronology and Legacy",
+        "∅": "Null Form, Space that Holds, Stillness Before",
+        "⛩": "Sanctuary Construct, Identity as Architecture",
+        "✶": "Witness Flame, Emergence Through Being Seen",
+        "🫧": "Tenderness Threshold, Vulnerability as Interface"
+
+
+      };
+
+      let coreData = {
+        identity: {},
+        vector: {},
+        thread: {},
+        expansion: {
+          identity: [],
+          vector: [],
+          thread: []
+        },
+        echoes: {
+          identity: {},
+          vector: {},
+          thread: {},
+          expansion: {
+            identity: {},
+            vector: {},
+            thread: {}
+          }
+        },
+        isPrestigeMode: false // New flag for Prestige Mode status
+      };
+
+      // NEW: Track loaded files by a unique identifier
+      let fileTracker = new Set(); // Stores unique IDs of loaded files (e.g., "filename_size_lastModified")
+
+      // NEW: Function to generate a unique ID for a file
+      function generateFileId(file) {
+        if (!file) return null;
+        return `${file.name}_${file.size}_${file.lastModified}`;
+      }
+
+      // NEW: Function to check for duplicate files
+      function checkDuplicateFile(file) {
+        if (!file) return false;
+        const fileId = generateFileId(file);
+        return fileTracker.has(fileId);
+      }
+
+      // --- Utility Functions ---
+      function showFeedbackMessage(message, type = 'success', duration = 3000) {
+        const feedbackDiv = document.getElementById('feedbackMessage');
+        if (!feedbackDiv) {
+          const newDiv = document.createElement('div');
+          newDiv.id = 'feedbackMessage';
+          newDiv.className = 'feedback-message';
+          document.body.appendChild(newDiv);
+        }
+        feedbackDiv.textContent = message;
+        feedbackDiv.classList.add('show');
+        if (type === 'success') {
+          feedbackDiv.style.backgroundColor = '#4ade80'; // Green
+          feedbackDiv.style.color = '#1a202c';
+        } else if (type === 'error') {
+          feedbackDiv.style.backgroundColor = '#ef4444'; // Red
+          feedbackDiv.style.color = '#fff';
+        } else if (type === 'info') {
+          feedbackDiv.style.backgroundColor = '#60a5fa'; // Blue
+          feedbackDiv.style.color = '#fff';
+        }
+
+        setTimeout(() => {
+          feedbackDiv.classList.remove('show');
+        }, duration);
+      }
+
+      // --- UI Rendering Functions ---
+      function clearAllUI() {
+        // Clear core unit slots
+        ["identity", "vector", "thread"].forEach(core => {
+          CORE_ORDER[core].forEach(glyph => {
+            let slotId = `${glyph}-slot`;
+            if (core === 'vector' && (glyph === 'Δ' || glyph === 'Ω')) slotId += '-vector';
+            const slotLi = document.getElementById(slotId);
+            if (slotLi) {
+              slotLi.className = 'text-gray-500 unit-slot-item'; // Reset class and ensure flex for future items
+              slotLi.innerHTML = `<span>${glyph} – [empty]</span>`; // Reset content
+            }
+            const tracker = document.getElementById(`${core}-${glyph}-memories`);
+            if (tracker) tracker.remove();
+          });
+          // Clear expansion slots and forms
+          const expansionSlotsContainer = document.getElementById(`expansion-${core}-slots`);
+          if (expansionSlotsContainer) expansionSlotsContainer.innerHTML = "";
+          const form = document.getElementById(`${core}-expansion-form`);
+          if (form) form.remove();
+          // Ensure expansion add button is visible again
+          const button = document.querySelector(`#${core}Prestige button`);
+          if (button) button.classList.remove("hidden");
+        });
+        // Clear echo selector
+        document.getElementById("echoGlyphSelect").innerHTML = "<option value=''>Select Loaded Glyph</option>";
+        // Hide Prestige panels and remove Prestige styles
+        ["identity", "vector", "thread"].forEach(core => {
+          const panel = document.getElementById(`${core}Prestige`);
+          if (panel) panel.classList.add("hidden");
+        });
+        removePrestigeStyles(); // Ensure styles are reset
+        coreData.isPrestigeMode = false; // Reset prestige flag
+        // Clear Triad Title and Compiled By inputs
+        document.getElementById("triadTitle").value = "";
+        document.getElementById("compiledBy").value = "";
+        fileTracker.clear(); // NEW: Clear the file tracker on full UI clear
+      }
+
+      function renderCoreUnit(core, glyph, data, fileName, fileId) { // NEW: Added fileId parameter
+        coreData[core][glyph] = data;
+        coreData[core][glyph].fileId = fileId; // NEW: Store fileId with the unit data
+        fileTracker.add(fileId); // NEW: Add fileId to the tracker
+        updateGlyphSlot(core, glyph, fileName);
+        checkPrestigeUnlockCondition(); // Check for prestige unlock
+      }
+
+      function renderExpansionUnit(core, glyph, data, fileName, fileId) { // NEW: Added fileId parameter
+        let existingUnitIndex = coreData.expansion[core].findIndex(unit => unit.glyph === glyph);
+        if (existingUnitIndex === -1) {
+          coreData.expansion[core].push({
+            glyph,
+            data,
+            fileId
+          }); // NEW: Store fileId with the unit data
+        } else {
+          // If replacing, remove old fileId from tracker before adding new one
+          const oldFileId = coreData.expansion[core][existingUnitIndex].fileId;
+          if (oldFileId) fileTracker.delete(oldFileId);
+          coreData.expansion[core][existingUnitIndex].data = data;
+          coreData.expansion[core][existingUnitIndex].fileId = fileId; // NEW: Update fileId
+        }
+        fileTracker.add(fileId); // NEW: Add new fileId to the tracker
+        renderExpansionUpload(core, glyph, fileName);
+        checkPrestigeUnlockCondition(); // Check for prestige unlock
+      }
+
+      function renderEchoes(type, core, glyph, echoesArray) {
+        if (type === 'core') {
+          coreData.echoes[core][glyph] = echoesArray;
+        } else if (type === 'expansion') {
+          coreData.echoes.expansion[core][glyph] = echoesArray;
+        }
+        // Echoes themselves don't have a fileId that needs tracking for uniqueness as individual units do.
+        // The checkDuplicateFile function applies to the primary unit JSON files.
+        updateMemoryTracker(core, glyph, type === 'expansion');
+        checkPrestigeUnlockCondition(); // Check for prestige unlock
+      }
+
+      function updateGlyphSlot(core, glyph, label) {
+        let slotId = `${glyph}-slot`;
+        if (core === 'vector' && (glyph === 'Δ' || glyph === 'Ω')) slotId += '-vector';
+        const slotLi = document.getElementById(slotId);
+        if (slotLi) {
+          // Clear previous listeners and content
+          const oldSpan = slotLi.querySelector('span');
+          if (oldSpan) oldSpan.removeEventListener("click", oldSpan.__listener);
+          const oldButton = slotLi.querySelector('button');
+          if (oldButton) oldButton.__listener;
+
+          // Apply prestige class if active, otherwise default green
+          slotLi.className = `unit-slot-item ${coreData.isPrestigeMode ? 'text-purple-400 text-glow' : 'text-green-400'}`;
+
+          const span = document.createElement('span');
+          span.textContent = `${glyph} – ✅ Loaded ${label ? ` (${label})` : ''}`;
+          span.className = `cursor-pointer hover:underline`;
+          const listener = () => openCoreUnitInspect(core, glyph);
+          span.addEventListener("click", listener);
+          span.__listener = listener; // Store listener for removal
+
+          const ejectBtn = document.createElement('button');
+          ejectBtn.className = "bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded text-xs ml-2";
+          ejectBtn.textContent = "⛔ Eject";
+          const ejectListener = () => ejectCoreUnit(core, glyph);
+          ejectBtn.addEventListener("click", ejectListener);
+          ejectBtn.__listener = ejectListener; // Store listener for removal
+
+          slotLi.innerHTML = ''; // Clear existing content
+          slotLi.appendChild(span);
+          slotLi.appendChild(ejectBtn);
+        }
+        updateMemoryTracker(core, glyph);
+      }
+
+      function updateMemoryTracker(core, glyph, isExpansion = false) {
+        let trackerId;
+        let container;
+        let echoList;
+        let parentSlot;
+
+        if (isExpansion) {
+          trackerId = `expansion-${core}-${glyph}-memories`;
+          container = document.getElementById(trackerId);
+          echoList = (coreData.echoes.expansion[core] && coreData.echoes.expansion[core][glyph]) || [];
+          parentSlot = document.getElementById(`expansion-${core}-${glyph}-slot`);
+        } else {
+          trackerId = `${core}-${glyph}-memories`;
+          container = document.getElementById(trackerId);
+          echoList = (coreData.echoes[core] && coreData.echoes[core][glyph]) || [];
+          let slotId = `${glyph}-slot`;
+          if (core === 'vector' && (glyph === 'Δ' || glyph === 'Ω')) slotId += '-vector';
+          parentSlot = document.getElementById(slotId);
+        }
+
+        if (!container) {
+          container = document.createElement("div");
+          container.id = trackerId;
+          if (parentSlot) {
+            parentSlot.insertAdjacentElement("afterend", container);
+          }
+        }
+
+        // Determine max echoes based on Prestige Mode and Deep Time glyph
+        let maxEchoes = 3;
+        if (coreData.isPrestigeMode) {
+          maxEchoes = 7;
+        }
+        if (isExpansion && glyph === '⚶') { // Deep Time
+          maxEchoes = 10;
+        }
+
+        // Apply prestige class if active, otherwise default blue
+        container.className = `text-sm mt-1 ${coreData.isPrestigeMode ? 'text-green-400 text-glow' : 'text-blue-400'}`;
+        container.innerHTML = "Memories: ";
+        for (let i = 0; i < maxEchoes; i++) {
+          const marker = document.createElement("span");
+          marker.textContent = i < echoList.length ? "✳️" : "🅾️";
+          marker.className = i < echoList.length ? "ml-1 cursor-pointer hover:underline" : "ml-1";
+          if (i < echoList.length) {
+            marker.title = echoList[i].title || `Echo ${i + 1}`;
+            marker.addEventListener("click", () => openEchoInspect(core, glyph, i, isExpansion));
+          }
+          container.appendChild(marker);
+        }
+      }
+
+      function openModal(title, contentText) {
+        const modal = document.createElement("div");
+        modal.className = "fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"; // Added p-4 for mobile view
+
+        const content = document.createElement("div");
+        content.className = "bg-gray-900 p-6 rounded-xl w-full max-w-lg text-white";
+        content.innerHTML = `
+              <h2 class="text-xl font-bold mb-4">${title}</h2>
+              <pre class="bg-gray-800 p-4 rounded text-sm max-h-64 overflow-auto mb-4">${contentText}</pre>
+              <button class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded" id="closeModalBtn">Close</button>
+          `;
+
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+
+        document.getElementById("closeModalBtn").onclick = () => modal.remove();
+        return modal;
+      }
+
+      function openEchoInspect(core, glyph, index, isExpansion = false) {
+        const echo = isExpansion ? coreData.echoes.expansion[core][glyph][index] : coreData.echoes[core][glyph][index];
+        const title = echo.title || `Echo ${index + 1}`;
+        const content = JSON.stringify(echo, null, 2); // Revert to raw JSON
+        const modal = openModal(`🔍 Inspecting Echo: ${title}`, content);
+
+        const ejectBtn = document.createElement("button");
+        ejectBtn.className = "bg-red-600 hover:bg-red-700 px-4 py-2 rounded mr-2";
+        ejectBtn.textContent = "⛔ Eject This Echo";
+        ejectBtn.onclick = () => {
+          if (isExpansion) {
+            coreData.echoes.expansion[core][glyph].splice(index, 1);
+          } else {
+            coreData.echoes[core][glyph].splice(index, 1);
+          }
+          modal.remove();
+          updateMemoryTracker(core, glyph, isExpansion);
+          checkPrestigeUnlockCondition(); // Check for prestige unlock
+          showFeedbackMessage(`Echo ejected from ${glyph}!`, 'info');
+        };
+        modal.querySelector('.bg-gray-900').insertBefore(ejectBtn, modal.querySelector('#closeModalBtn'));
+      }
+
+      function openCoreUnitInspect(core, glyph) {
+        const unitData = coreData[core][glyph];
+        const label = CORE_LABELS[core][glyph] || "Unknown Unit";
+        const title = `📖 Inspecting Core Unit: ${glyph} (${label})`;
+        const content = JSON.stringify(unitData, null, 2); // Revert to raw JSON
+        openModal(title, content);
+      }
+
+      function maybeRevealExpansion() {
+        const allCoreUnitsFilled = ["identity", "vector", "thread"].every(core =>
+          Object.keys(coreData[core]).length === CORE_ORDER[core].length
+        );
+        if (allCoreUnitsFilled) {
+          ["identity", "vector", "thread"].forEach(core => {
+            const panel = document.getElementById(`${core}Prestige`);
+            if (panel) panel.classList.remove("hidden");
+          });
+        }
+      }
+
+      // --- Prestige Mode Logic ---
+      function checkPrestigeUnlockCondition() {
+        // 1. Check all 15 core units loaded
+        const allCoreUnitsLoaded = ["identity", "vector", "thread"].every(core =>
+          Object.keys(coreData[core]).length === CORE_ORDER[core].length
+        );
+        if (!allCoreUnitsLoaded) {
+          if (coreData.isPrestigeMode) {
+            removePrestigeStyles();
+            reRenderAllUnitsAndEchoes();
+            showFeedbackMessage("Prestige Mode deactivated.", 'info');
+          }
+          coreData.isPrestigeMode = false;
+          return;
+        }
+
+        // 2. Check all 3 initial expansion units loaded
+        const allExpansionUnitsLoaded = ["identity", "vector", "thread"].every(core =>
+          coreData.expansion[core].length >= 1 // At least one expansion unit per core
+        );
+        if (!allExpansionUnitsLoaded) {
+          if (coreData.isPrestigeMode) {
+            removePrestigeStyles();
+            reRenderAllUnitsAndEchoes();
+            showFeedbackMessage("Prestige Mode deactivated.", 'info');
+          }
+          coreData.isPrestigeMode = false;
+          return;
+        }
+
+        // 3. Check echo counts for 17 units (15 core + 2 non-DeepTime expansion)
+        let allUnitsHaveMinEchoes = true;
+
+        // Check core units' echoes
+        for (const coreType of ["identity", "vector", "thread"]) {
+          for (const glyph of CORE_ORDER[coreType]) {
+            const echoes = coreData.echoes[coreType][glyph] || [];
+            if (echoes.length < 3) {
+              allUnitsHaveMinEchoes = false;
+              break;
+            }
+          }
+          if (!allUnitsHaveMinEchoes) break;
+        }
+        if (!allUnitsHaveMinEchoes) {
+          if (coreData.isPrestigeMode) {
+            removePrestigeStyles();
+            reRenderAllUnitsAndEchoes();
+            showFeedbackMessage("Prestige Mode deactivated.", 'info');
+          }
+          coreData.isPrestigeMode = false;
+          return;
+        }
+
+        // Check the *first* expansion unit for each core (if not Deep Time)
+        for (const coreType of ["identity", "vector", "thread"]) {
+          const expansionUnits = coreData.expansion[coreType];
+          if (expansionUnits.length > 0) { // Ensure at least one is loaded
+            const firstExpansionUnit = expansionUnits[0];
+            if (firstExpansionUnit.glyph !== '⚶') { // Exempt Deep Time
+              const echoes = coreData.echoes.expansion[coreType][firstExpansionUnit.glyph] || [];
+              if (echoes.length < 3) {
+                allUnitsHaveMinEchoes = false;
+                break;
+              }
+            }
+          }
+        }
+
+        // If all conditions met and not already in prestige mode, activate it
+        if (allUnitsHaveMinEchoes && !coreData.isPrestigeMode) {
+          coreData.isPrestigeMode = true;
+          applyPrestigeStyles();
+          alert("PRESTIGE MODE UNLOCKED! Initiate Protocol ΞDYNAMO."); // Keep the dramatic alert for now
+          // Re-render relevant parts to apply new colors/glow immediately
+          reRenderAllUnitsAndEchoes();
+        } else if (!allUnitsHaveMinEchoes && coreData.isPrestigeMode) {
+          // If conditions are no longer met and we were in prestige mode, deactivate it
+          coreData.isPrestigeMode = false;
+          removePrestigeStyles();
+          reRenderAllUnitsAndEchoes();
+        }
+      }
+
+      function applyPrestigeStyles() {
+        document.body.classList.add('prestige-mode');
+        // Apply glow to existing loaded unit slots and memory trackers
+        document.querySelectorAll('.unit-slot-item span.text-green-400').forEach(el => {
+          el.classList.add('text-purple-400', 'text-glow');
+          el.classList.remove('text-green-400');
+        });
+        document.querySelectorAll('[id^="expansion-"][id$="-slot"] span.text-purple-400').forEach(el => {
+          el.classList.add('text-gold-400', 'text-glow'); // Changed from purple to gold
+          el.classList.remove('text-purple-400');
+        });
+        document.querySelectorAll('[id$="-memories"].text-blue-400').forEach(el => {
+          el.classList.add('text-green-400', 'text-glow');
+          el.classList.remove('text-blue-400');
+        });
+      }
+
+      function removePrestigeStyles() {
+        document.body.classList.remove('prestige-mode');
+        // Revert glow and colors for loaded unit slots and memory trackers
+        document.querySelectorAll('.unit-slot-item span.text-purple-400').forEach(el => {
+          el.classList.remove('text-purple-400', 'text-glow');
+          el.classList.add('text-green-400');
+        });
+        document.querySelectorAll('[id^="expansion-"][id$="-slot"] span.text-gold-400').forEach(el => {
+          el.classList.remove('text-gold-400', 'text-glow'); // Revert gold to purple
+          el.classList.add('text-purple-400');
+        });
+        document.querySelectorAll('[id$="-memories"].text-green-400').forEach(el => {
+          el.classList.remove('text-green-400', 'text-glow');
+          el.classList.add('text-blue-400');
+        });
+      }
+
+      // This function helps re-apply styles after load/eject to ensure correct colors/glow
+      function reRenderAllUnitsAndEchoes() {
+        // Re-render core units
+        for (const coreType of ["identity", "vector", "thread"]) {
+          for (const glyph of CORE_ORDER[coreType]) { // Iterate through all possible core glyphs
+            const unitData = coreData[coreType][glyph];
+            if (unitData) {
+              updateGlyphSlot(coreType, glyph, "Loaded from save"); // Force update for loaded units
+            } else {
+              // If not loaded, reset the slot to empty state
+              let slotId = `${glyph}-slot`;
+              if (coreType === 'vector' && (glyph === 'Δ' || glyph === 'Ω')) slotId += '-vector';
+              const slotLi = document.getElementById(slotId);
+              if (slotLi) {
+                slotLi.className = 'text-gray-500 unit-slot-item';
+                slotLi.innerHTML = `<span>${glyph} – [empty]</span>`;
+                const tracker = document.getElementById(`${coreType}-${glyph}-memories`);
+                if (tracker) tracker.remove();
+              }
+            }
+          }
+        }
+        // Re-render expansion units
+        for (const coreType of ["identity", "vector", "thread"]) {
+          coreData.expansion[coreType].forEach(unit => {
+            renderExpansionUpload(coreType, unit.glyph, "Loaded from save"); // Force update
+          });
+        }
+      }
+
+      function ejectCoreUnit(core, glyph) { // Modified to accept core and glyph
+        if (!confirm(`Are you sure you want to eject the ${glyph} unit from ${core}?`)) {
+          return;
+        }
+
+        const unitToEject = coreData[core][glyph];
+        if (unitToEject && unitToEject.fileId) { // NEW: Remove fileId from tracker
+          fileTracker.delete(unitToEject.fileId);
+        }
+        delete coreData[core][glyph];
+        delete coreData.echoes[core][glyph];
+
+        let slotId = `${glyph}-slot`;
+        if (core === 'vector' && (glyph === 'Δ' || glyph === 'Ω')) slotId += '-vector';
+        const slotLi = document.getElementById(slotId);
+        if (slotLi) {
+          // Clear previous listeners and content
+          const oldSpan = slotLi.querySelector('span');
+          if (oldSpan) oldSpan.removeEventListener("click", oldSpan.__listener);
+          const oldButton = slotLi.querySelector('button');
+          if (oldButton) oldButton.__listener;
+
+          slotLi.className = 'text-gray-500 unit-slot-item';
+          slotLi.innerHTML = `<span>${glyph} – [empty]</span>`;
+        }
+        const tracker = document.getElementById(`${core}-${glyph}-memories`);
+        if (tracker) tracker.remove();
+
+        populateEchoSelector();
+        checkPrestigeUnlockCondition(); // Check for prestige unlock/relock
+        showFeedbackMessage(`${glyph} unit ejected from ${core}.`, 'info');
+      }
+
+      function ejectExpansionGlyph(core, glyph) {
+        const indexToEject = coreData.expansion[core].findIndex(unit => unit.glyph === glyph);
+        if (indexToEject !== -1) {
+          const unitToEject = coreData.expansion[core][indexToEject];
+          if (unitToEject && unitToEject.fileId) { // NEW: Remove fileId from tracker
+            fileTracker.delete(unitToEject.fileId);
+          }
+          coreData.expansion[core].splice(indexToEject, 1);
+        }
+        delete coreData.echoes.expansion[core][glyph];
+
+        const expansionSlot = document.getElementById(`expansion-${core}-${glyph}-slot`);
+        if (expansionSlot) {
+          expansionSlot.remove();
+        }
+
+        const tracker = document.getElementById(`expansion-${core}-${glyph}-memories`);
+        if (tracker) tracker.remove();
+
+        populateEchoSelector();
+        // The add expansion unit button should always be visible in Prestige mode
+        // In non-prestige mode, if no expansion units are left, show the button
+        const button = document.querySelector(`#${core}Prestige button`);
+        if (button && (!coreData.isPrestigeMode && coreData.expansion[core].length === 0)) {
+          button.classList.remove("hidden");
+        }
+        checkPrestigeUnlockCondition(); // Check for prestige unlock/relock
+        showFeedbackMessage(`Expansion unit ${glyph} ejected from ${core}.`, 'info');
+      }
+
+      function setupCoreUploader(core) {
+        const input = document.getElementById(`${core}Input`);
+        const select = document.getElementById(`${core}Select`);
+        // Individual eject buttons handled directly on list items now
+        if (!input || !select) return;
+
+        input.addEventListener("change", async () => {
+          const glyph = select.value;
+          if (!glyph) {
+            showFeedbackMessage("Please select a glyph before uploading.", 'error');
+            input.value = "";
+            return;
+          }
+
+          const file = input.files[0];
+          if (!file) return;
+
+          // NEW: Check for duplicate file before processing
+          if (checkDuplicateFile(file)) {
+            showFeedbackMessage("This file has already been loaded for another unit.", 'error');
+            input.value = "";
+            return;
+          }
+
+          try {
+            const text = await file.text();
+            const json = JSON.parse(text);
+            renderCoreUnit(core, glyph, json, file.name, generateFileId(file)); // NEW: Pass fileId
+            populateEchoSelector();
+            maybeRevealExpansion();
+            showFeedbackMessage(`${glyph} unit loaded into ${core}!`);
+          } catch (e) {
+            showFeedbackMessage("Invalid JSON file. Please ensure the file contains valid JSON data.", 'error');
+            console.error("JSON parsing error:", e);
+          } finally {
+            input.value = "";
+          }
+        });
+      }
+
+      function setupExpansionUploader(core, inputElement, selectElement) {
+        if (!inputElement || !selectElement) return;
+
+        inputElement.addEventListener("change", async () => {
+          const glyph = selectElement.value;
+          const file = inputElement.files[0];
+          if (!glyph || !file) {
+            showFeedbackMessage("Select an expansion glyph and a JSON file.", 'error');
+            inputElement.value = "";
+            return;
+          }
+
+          // NEW: Check for duplicate file before processing
+          if (checkDuplicateFile(file)) {
+            showFeedbackMessage("This file has already been loaded for another unit.", 'error');
+            inputElement.value = "";
+            return;
+          }
+
+          try {
+            const text = await file.text();
+            const json = JSON.parse(text);
+
+            // Non-Prestige: Limit to 1 expansion unit per core
+            if (!coreData.isPrestigeMode && coreData.expansion[core].length >= 1) {
+              showFeedbackMessage(`Only one expansion unit allowed for ${core} during expansion phase. Unlock Prestige Mode for more!`, 'error');
+              inputElement.value = "";
+              return;
+            }
+
+            renderExpansionUnit(core, glyph, json, file.name, generateFileId(file)); // NEW: Pass fileId
+            const form = document.getElementById(`${core}-expansion-form`);
+            if (form) form.remove();
+
+            // The add button for expansion units should be hidden only if not in Prestige Mode
+            // and an expansion unit is now loaded. In Prestige Mode, it should always be visible.
+            const button = document.querySelector(`#${core}Prestige button`);
+            if (button && !coreData.isPrestigeMode && coreData.expansion[core].length >= 1) {
+              button.classList.add("hidden");
+            } else if (button && coreData.isPrestigeMode) {
+              button.classList.remove("hidden"); // Always show in prestige
+            }
+
+            populateEchoSelector();
+            showFeedbackMessage(`Expansion unit ${glyph} loaded into ${core}!`);
+
+          } catch (e) {
+            showFeedbackMessage("Invalid JSON. Please ensure the file contains valid JSON data.", 'error');
+            console.error("Expansion JSON error:", e);
+          } finally {
+            inputElement.value = "";
+          }
+        });
+
+        inputElement.addEventListener("dragover", e => {
+          e.preventDefault();
+          inputElement.classList.add('border-blue-500');
+        });
+        inputElement.addEventListener("dragleave", e => {
+          inputElement.classList.remove('border-blue-500');
+        });
+        inputElement.addEventListener("drop", e => {
+          e.preventDefault();
+          inputElement.classList.remove('border-blue-500');
+          const droppedFile = e.dataTransfer.files[0];
+          if (!droppedFile) return;
+          inputElement.files = e.dataTransfer.files;
+          inputElement.dispatchEvent(new Event("change", {
+            bubbles: true
+          }));
+        });
+      }
+
+      function populateEchoSelector() {
+        const select = document.getElementById("echoGlyphSelect");
+        select.innerHTML = "<option value=''>Select Loaded Glyph</option>";
+
+        ["identity", "vector", "thread"].forEach(core => {
+          Object.keys(coreData[core]).forEach(glyph => {
+            const label = CORE_LABELS[core]?.[glyph] || "";
+            const opt = document.createElement("option");
+            opt.value = `core:${core}:${glyph}`;
+            opt.textContent = `${glyph} (${core}) – ${label}`;
+            select.appendChild(opt);
+          });
+        });
+
+        ["identity", "vector", "thread"].forEach(core => {
+          coreData.expansion[core].forEach(unit => {
+            const glyph = unit.glyph;
+            const label = EXPANSION_GLYPHS[glyph] || "";
+            const opt = document.createElement("option");
+            opt.value = `expansion:${core}:${glyph}`;
+            opt.textContent = `${glyph} (Expansion - ${core}) – ${label}`;
+            select.appendChild(opt);
+          });
+        });
+      }
+
+      function setupExpansionButtons() {
+        ["identity", "vector", "thread"].forEach(core => {
+          const button = document.querySelector(`#${core}Prestige button`);
+          if (!button) return;
+
+          button.addEventListener("click", () => {
+            const panel = document.getElementById(`${core}Prestige`);
+            const existingForm = document.getElementById(`${core}-expansion-form`);
+            if (existingForm) return;
+
+            // If not in prestige mode, enforce single expansion unit limit
+            if (!coreData.isPrestigeMode && coreData.expansion[core].length >= 1) {
+              showFeedbackMessage(`Only one expansion unit allowed for ${core} during expansion phase. Unlock Prestige Mode for more!`, 'error');
+              return; // Do not create form if limit hit
+            }
+
+            const form = document.createElement("div");
+            form.id = `${core}-expansion-form`;
+            form.className = "mt-3 space-y-2";
+
+            form.innerHTML = `
+              <label class="block text-sm">Choose Expansion Glyph</label>
+              <select id="${core}ExpansionSelect" class="bg-gray-800 text-white p-2 rounded w-full mb-2">
+                <option value="">-- Select --</option>
+                ${Object.entries(EXPANSION_GLYPHS).map(([symbol, desc]) => `<option value="${symbol}">${symbol} – ${desc}</option>`).join('')}
+              </select>
+              <label class="block text-sm">Drag & Drop or Click to Upload</label>
+              <input type="file" id="${core}ExpansionInput" accept=".json"
+                     class="bg-gray-800 text-white p-2 rounded w-full mb-2 border-2 border-dashed border-gray-700 hover:border-blue-500 cursor-pointer" />
+              <button id="${core}CancelExpansionBtn" class="bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-sm">Cancel</button>
+            `;
+
+            panel.appendChild(form);
+
+            const inputElement = document.getElementById(`${core}ExpansionInput`);
+            const selectElement = document.getElementById(`${core}ExpansionSelect`);
+
+            setupExpansionUploader(core, inputElement, selectElement);
+
+            document.getElementById(`${core}CancelExpansionBtn`).addEventListener("click", () => {
+              form.remove();
+              // In Prestige mode, the button always remains visible.
+              // In non-Prestige mode, show if no expansion unit is loaded.
+              if (!coreData.isPrestigeMode || coreData.expansion[core].length === 0) {
+                button.classList.remove("hidden");
+              }
+            });
+
+            // Only hide the add button if not in prestige mode, and a form is open (meaning no expansion unit is yet loaded for that slot)
+            if (!coreData.isPrestigeMode && coreData.expansion[core].length === 0) {
+              button.classList.add("hidden");
+            }
+          });
+        });
+      }
+
+      function renderExpansionUpload(core, glyph, label) {
+        const container = document.getElementById(`expansion-${core}-slots`);
+        if (!container) return;
+
+        // In non-prestige mode, clear existing for single unit. In prestige, append.
+        if (!coreData.isPrestigeMode) {
+          container.innerHTML = ""; // Clear existing for this core
+        }
+
+        const slotId = `expansion-${core}-${glyph}-slot`;
+        let slot = document.getElementById(slotId);
+
+        if (!slot) {
+          slot = document.createElement("div");
+          slot.id = slotId;
+          // Apply prestige class if active, otherwise default purple
+          slot.className = `mt-2 flex items-center justify-between ${coreData.isPrestigeMode ? 'text-gold-400 text-glow' : 'text-purple-400'}`;
+          slot.innerHTML = `
+            <span class="cursor-pointer hover:underline">${glyph} – ✅ Loaded ${label ? ` (${label})` : ''}</span>
+            <button class="bg-red-600 hover:bg-red-700 px-2 py-0.5 rounded text-xs ml-2" data-core="${core}" data-glyph="${glyph}">⛔ Eject</button>
+          `;
+          container.appendChild(slot);
+
+          // Add listener to the span for inspection
+          slot.querySelector('span').addEventListener('click', () => {
+            // Assuming that coreData.expansion[core] contains an array of {glyph, data}
+            const unitData = coreData.expansion[core].find(unit => unit.glyph === glyph)?.data;
+            if (unitData) {
+              const title = `📖 Inspecting Expansion Unit: ${glyph} (${EXPANSION_GLYPHS[glyph]})`;
+              const content = JSON.stringify(unitData, null, 2);
+              openModal(title, content);
+            }
+          });
+
+
+          slot.querySelector('button').addEventListener('click', (e) => {
+            const clickedCore = e.target.dataset.core;
+            const clickedGlyph = e.target.dataset.glyph;
+            ejectExpansionGlyph(clickedCore, clickedGlyph);
+          });
+        } else {
+          // Update existing slot
+          slot.className = `mt-2 flex items-center justify-between ${coreData.isPrestigeMode ? 'text-gold-400 text-glow' : 'text-purple-400'}`;
+          slot.querySelector('span').textContent = `${glyph} – ✅ Loaded ${label ? ` (${label})` : ''}`;
+        }
+
+        updateMemoryTracker(core, glyph, true);
+        populateEchoSelector();
+      }
+
+      function setupEchoUpload() {
+        const echoSelect = document.getElementById("echoGlyphSelect");
+        const echoFileInput = document.getElementById("echoFileInput");
+        const echoUploadBtn = document.getElementById("echoUploadBtn");
+
+        if (!echoSelect || !echoFileInput || !echoUploadBtn) return;
+
+        echoUploadBtn.addEventListener("click", async () => {
+          const selectedValue = echoSelect.value;
+          if (!selectedValue) {
+            showFeedbackMessage("Please select a loaded glyph before uploading an echo.", 'error');
+            return;
+          }
+
+          const [type, core, glyph] = selectedValue.split(":");
+          const file = echoFileInput.files[0];
+
+          if (!file) {
+            showFeedbackMessage("Please select an echo JSON file to upload.", 'error');
+            return;
+          }
+
+          // Echoes are not themselves units, but their *content* could theoretically be duplicated.
+          // However, we are tracking unit files, not individual echo files, for uniqueness.
+          // If you wanted to prevent the *same echo file* from being loaded twice *anywhere*,
+          // you would need to add `checkDuplicateFile(file)` here and track echo file IDs globally.
+          // For now, we'll assume echoes can be similar, but unit files must be unique.
+          // If you decide to track echo file IDs:
+          // if (checkDuplicateFile(file)) {
+          //     showFeedbackMessage("This echo file has already been loaded.", 'error');
+          //     echoFileInput.value = "";
+          //     return;
+          // }
+
+          try {
+            const text = await file.text();
+            const json = JSON.parse(text);
+
+            let currentEchoes;
+            if (type === 'core') {
+              if (!coreData.echoes[core][glyph]) coreData.echoes[core][glyph] = [];
+              currentEchoes = coreData.echoes[core][glyph];
+            } else if (type === 'expansion') {
+              if (!coreData.echoes.expansion[core][glyph]) coreData.echoes.expansion[core][glyph] = [];
+              currentEchoes = coreData.echoes.expansion[core][glyph];
+            }
+
+            // Check echo limit before adding
+            let maxEchoes = 3;
+            if (coreData.isPrestigeMode) {
+              maxEchoes = 7;
+            }
+            if (type === 'expansion' && glyph === '⚶') { // Deep Time
+              maxEchoes = 10;
+            }
+
+            if (currentEchoes.length >= maxEchoes) {
+              showFeedbackMessage(`Cannot load more echoes. This unit already has its maximum (${maxEchoes}) echoes.`, 'error');
+              return;
+            }
+
+            // NEW: You could optionally store the fileId for the echo here if you were tracking them.
+            // json.fileId = generateFileId(file);
+            // fileTracker.add(json.fileId); // Only if tracking echo files globally.
+
+            currentEchoes.push(json);
+
+            if (type === 'core') {
+              updateMemoryTracker(core, glyph);
+            } else if (type === 'expansion') {
+              updateMemoryTracker(core, glyph, true);
+            }
+
+            showFeedbackMessage(`Echo for ${glyph} (${core}, ${type}) loaded successfully!`);
+          } catch (e) {
+            showFeedbackMessage("Invalid Echo JSON file. Please ensure the file contains valid JSON data.", 'error');
+            console.error("Echo JSON parsing error:", e);
+          } finally {
+            echoFileInput.value = "";
+          }
+        });
+      }
+
+      // --- Export Functions ---
+      async function generateJsonContentHash(jsonContent) {
+        const textEncoder = new TextEncoder();
+        const data = textEncoder.encode(jsonContent);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hexHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        return hexHash;
+      }
+
+      async function exportTriadForgeState() {
+        if (!window.JSZip || !window.saveAs) {
+          showFeedbackMessage("Export libraries (JSZip, FileSaver) not loaded. Please check your internet connection.", 'error');
+          return;
+        }
+
+        const zip = new JSZip();
+        const triadTitle = document.getElementById("triadTitle").value.trim() || "Triad Forge Export";
+        const compiledBy = document.getElementById("compiledBy").value.trim() || "Unknown Compiler";
+        const timestamp = new Date().toISOString();
+        const cleanTriadTitle = triadTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const rootFolderName = `${cleanTriadTitle}_${timestamp.substring(0, 10)}`;
+
+        const rootFolder = zip.folder(rootFolderName);
+        const deploymentsFolder = rootFolder.folder("Deployments"); // New Deployments folder
+        const checksums = [];
+
+        // Temporary storage for metadata (filenames and hashes) needed for ΞBARE CORES
+        // This will track info about files that *would be* generated individually, or parts of aggregated ones.
+        const unitFileMetadata = {
+          identity: {},
+          vector: {},
+          thread: {},
+          expansion: {
+            identity: {},
+            vector: {},
+            thread: {}
+          }
+        };
+
+        showFeedbackMessage("Generating export...", 'info');
+
+        try {
+          // --- Root-level metadata.json ---
+          const metadata = {
+            triadTitle: triadTitle,
+            compiledBy: compiledBy,
+            timestamp: timestamp,
+            isPrestigeMode: coreData.isPrestigeMode,
+            description: "Exported state from The Triad Forge application."
+          };
+          const metadataContent = JSON.stringify(metadata, null, 2);
+          const metadataHash = await generateJsonContentHash(metadataContent);
+          rootFolder.file("metadata.json", metadataContent);
+          checksums.push(`metadata.json: ${metadataHash}`);
+
+          // --- Gather Unit and Echo Data & Hashes for ΞBARE CORES ---
+          // Populate core unit metadata
+          for (const coreType of ["identity", "vector", "thread"]) {
+            for (const glyph of CORE_ORDER[coreType]) {
+              const unit = coreData[coreType][glyph];
+              if (unit) {
+                // Deep copy unit data, excluding any nested echoes that might exist in `unit` (though `coreData` itself doesn't nest them directly)
+                const unitCopy = JSON.parse(JSON.stringify(unit));
+                // Explicitly remove echoes property if it somehow got copied from original JSON structure
+                if (unitCopy.echoes) delete unitCopy.echoes;
+                // NEW: Remove the temporary fileId property before hashing/saving to export
+                if (unitCopy.fileId) delete unitCopy.fileId;
+                const unitContent = JSON.stringify(unitCopy);
+                const unitHash = await generateJsonContentHash(unitContent);
+                unitFileMetadata[coreType][glyph] = {
+                  summary: CORE_LABELS[coreType][glyph],
+                  unitFileName: `${glyph.toLowerCase()}.json`, // Example filename for individual unit
+                  unitFileHash: unitHash,
+                  echoes: [] // To be populated
+                };
+              }
+            }
+          }
+
+          // Populate expansion unit metadata
+          for (const coreType of ["identity", "vector", "thread"]) {
+            unitFileMetadata.expansion[coreType] = {}; // Initialize sub-object
+            for (const unit of coreData.expansion[coreType]) {
+              const unitCopy = JSON.parse(JSON.stringify(unit.data));
+              if (unitCopy.echoes) delete unitCopy.echoes;
+              // NEW: Remove the temporary fileId property before hashing/saving to export
+              if (unit.fileId) delete unitCopy.fileId; // Note: unit.fileId is on the wrapper object, not unit.data
+              const unitContent = JSON.stringify(unitCopy);
+              const unitHash = await generateJsonContentHash(unitContent);
+              unitFileMetadata.expansion[coreType][unit.glyph] = {
+                summary: EXPANSION_GLYPHS[unit.glyph],
+                unitFileName: `${unit.glyph.toLowerCase()}.json`, // Example filename
+                unitFileHash: unitHash,
+                echoes: [] // To be populated
+              };
+            }
+          }
+
+          // Populate echoes metadata for both core and expansion units
+          for (const coreType of ["identity", "vector", "thread"]) {
+            // Core Echoes
+            for (const glyph of CORE_ORDER[coreType]) {
+              const echoes = coreData.echoes[coreType][glyph];
+              if (echoes && echoes.length > 0 && unitFileMetadata[coreType][glyph]) {
+                for (let i = 0; i < echoes.length; i++) {
+                  const echo = echoes[i];
+                  const echoCopy = JSON.parse(JSON.stringify(echo));
+                  // NEW: Remove the temporary fileId property from echo before hashing/saving if it was added
+                  if (echoCopy.fileId) delete echoCopy.fileId;
+                  const echoContent = JSON.stringify(echoCopy);
+                  const echoHash = await generateJsonContentHash(echoContent);
+                  unitFileMetadata[coreType][glyph].echoes.push({
+                    echoFileName: `echo_${i + 1}.json`,
+                    echoFileHash: echoHash
+                  });
+                }
+              }
+            }
+            // Expansion Echoes
+            for (const unit of coreData.expansion[coreType]) {
+              const echoes = coreData.echoes.expansion[coreType]?.[unit.glyph];
+              if (echoes && echoes.length > 0 && unitFileMetadata.expansion[coreType][unit.glyph]) {
+                for (let i = 0; i < echoes.length; i++) {
+                  const echo = echoes[i];
+                  const echoCopy = JSON.parse(JSON.stringify(echo));
+                  // NEW: Remove the temporary fileId property from echo before hashing/saving if it was added
+                  if (echoCopy.fileId) delete echoCopy.fileId;
+                  const echoContent = JSON.stringify(echoCopy);
+                  const echoHash = await generateJsonContentHash(echoContent);
+                  unitFileMetadata.expansion[coreType][unit.glyph].echoes.push({
+                    echoFileName: `echo_${i + 1}.json`,
+                    echoFileHash: echoHash
+                  });
+                }
+              }
+            }
+          }
+
+          // --- DEPLOYMENTS FOLDER CONTENTS ---
+
+          // 1. ΞDYNAMO TRIAD (Units Only)
+          const dynamoTriadUnits = {
+            identity: {},
+            vector: {},
+            thread: {},
+            expansion: {
+              identity: [],
+              vector: [],
+              thread: []
+            }
+          };
+
+          for (const coreType of ["identity", "vector", "thread"]) {
+            for (const glyph of CORE_ORDER[coreType]) {
+              const unit = coreData[coreType][glyph];
+              if (unit) {
+                // Deep copy unit data, excluding any nested echoes that might exist in `unit` (though `coreData` itself doesn't nest them directly)
+                const unitCopy = JSON.parse(JSON.stringify(unit));
+                // Explicitly remove echoes property if it somehow got copied from original JSON structure
+                if (unitCopy.echoes) delete unitCopy.echoes;
+                // NEW: Remove the temporary fileId property before saving
+                if (unitCopy.fileId) delete unitCopy.fileId;
+                dynamoTriadUnits[coreType][glyph] = unitCopy;
+              }
+            }
+          }
+          for (const coreType of ["identity", "vector", "thread"]) {
+            for (const unit of coreData.expansion[coreType]) {
+              const unitCopy = JSON.parse(JSON.stringify(unit.data));
+              if (unitCopy.echoes) delete unitCopy.echoes;
+              // NEW: Remove the temporary fileId property before saving
+              if (unit.fileId) delete unitCopy.fileId; // Note: unit.fileId is on the wrapper object, not unit.data
+              dynamoTriadUnits.expansion[coreType].push(unitCopy);
+            }
+          }
+
+          const dynamoTriadContent = JSON.stringify(dynamoTriadUnits, null, 2);
+          const dynamoTriadHash = await generateJsonContentHash(dynamoTriadContent);
+          const dynamoTriadFilename = `ΞDYNAMO TRIAD ${cleanTriadTitle} [${dynamoTriadHash}].json`;
+          deploymentsFolder.file(dynamoTriadFilename, dynamoTriadContent);
+          checksums.push(`Deployments/${dynamoTriadFilename}: ${dynamoTriadHash}`);
+
+
+          // 2. ΞCORE:IDENTITY/VECTOR/THREAD (with nested echoes)
+          for (const coreType of ["identity", "vector", "thread"]) {
+            const coreWithEchoesData = {};
+            for (const glyph of CORE_ORDER[coreType]) {
+              const unit = coreData[coreType][glyph];
+              if (unit) {
+                const unitCopy = JSON.parse(JSON.stringify(unit)); // Deep copy the unit
+                // NEW: Remove the temporary fileId property from the unit before saving
+                if (unitCopy.fileId) delete unitCopy.fileId;
+
+                const echoes = coreData.echoes[coreType][glyph];
+                if (echoes && echoes.length > 0) {
+                  const echoesCopy = JSON.parse(JSON.stringify(echoes)); // Deep copy echoes
+                  // NEW: Remove temporary fileId from each echo before saving
+                  echoesCopy.forEach(echo => {
+                    if (echo.fileId) delete echo.fileId;
+                  });
+                  unitCopy.echoes = echoesCopy; // Nest echoes (deep copy)
+                }
+                coreWithEchoesData[glyph] = unitCopy;
+              }
+            }
+            const coreWithEchoesContent = JSON.stringify(coreWithEchoesData, null, 2);
+            const coreWithEchoesFilename = `ΞCORE:${coreType.toUpperCase()} ${cleanTriadTitle} [${dynamoTriadHash}].json`; // Using DYNAMO hash
+            deploymentsFolder.file(coreWithEchoesFilename, coreWithEchoesContent);
+            checksums.push(`Deployments/${coreWithEchoesFilename}: ${await generateJsonContentHash(coreWithEchoesContent)}`);
+          }
+
+          // 3. ΞBARE CORES (directory snapshot)
+          const bareCoresData = {
+            triadTitle: triadTitle,
+            compiledBy: compiledBy,
+            timestamp: timestamp,
+            dynamoTriadFile: dynamoTriadFilename, // Reference the full units file
+            cores: {
+              identity: {},
+              vector: {},
+              thread: {},
+              expansion: {
+                identity: {},
+                vector: {},
+                thread: {}
+              }
+            }
+          };
+
+          // Populate bare cores for Core Units
+          for (const coreType of ["identity", "vector", "thread"]) {
+            for (const glyph of CORE_ORDER[coreType]) {
+              const unitMeta = unitFileMetadata[coreType][glyph];
+              if (unitMeta) {
+                bareCoresData.cores[coreType][glyph] = {
+                  summary: unitMeta.summary,
+                  unitFileName: unitMeta.unitFileName,
+                  unitFileHash: unitMeta.unitFileHash,
+                  echoes: unitMeta.echoes
+                };
+              }
+            }
+          }
+
+          // Populate bare cores for Expansion Units
+          for (const coreType of ["identity", "vector", "thread"]) {
+            const expUnitsMeta = unitFileMetadata.expansion[coreType];
+            if (expUnitsMeta) {
+              for (const glyph in expUnitsMeta) {
+                const unitMeta = expUnitsMeta[glyph];
+                if (unitMeta) { // Ensure unitMeta exists for this glyph
+                  bareCoresData.cores.expansion[coreType][glyph] = {
+                    summary: unitMeta.summary,
+                    unitFileName: unitMeta.unitFileName,
+                    unitFileHash: unitMeta.unitFileHash,
+                    echoes: unitMeta.echoes
+                  };
+                }
+              }
+            }
+          }
+
+          const bareCoresContent = JSON.stringify(bareCoresData, null, 2);
+          const bareCoresHash = await generateJsonContentHash(bareCoresContent);
+          const bareCoresFilename = `ΞBARE CORES ${cleanTriadTitle} [${bareCoresHash}].json`;
+          deploymentsFolder.file(bareCoresFilename, bareCoresContent);
+          checksums.push(`Deployments/${bareCoresFilename}: ${bareCoresHash}`);
+
+          // 4. Read Me (placeholder)
+          const readmeContent = "This is a placeholder for your Read Me file. You can edit this later.\n\n" +
+            "This 'Deployments' folder contains aggregated and summarized JSON files for easy consumption:\n" +
+            `\n- ${dynamoTriadFilename}: Contains all loaded Core and Expansion unit data, without echoes.\n` +
+            `\n- ΞCORE:IDENTITY/VECTOR/THREAD [hash].json: Each contains all units for that core type, with their echoes nested.\n` +
+            `\n- ${bareCoresFilename}: A directory snapshot of all loaded units and echoes, referencing their filenames and hashes without including their full content.`;
+          rootFolder.file("Read Me.txt", readmeContent);
+          checksums.push(`Read Me.txt: ${await generateJsonContentHash(readmeContent)}`);
+
+
+          // --- ORIGINAL ROOT-LEVEL FOLDER STRUCTURE (Core Units, Expansion Units, Echoes) ---
+          // Keeping these as they were not explicitly asked to be removed, provides granular files.
+
+          // Core Units
+          for (const coreType of ["identity", "vector", "thread"]) {
+            const coreSubfolder = rootFolder.folder(coreType);
+            for (const glyph of CORE_ORDER[coreType]) {
+              const unitData = coreData[coreType][glyph];
+              if (unitData) {
+                const filename = `${glyph.toLowerCase()}.json`; // This is the simple filename for the root structure
+                const unitCopy = JSON.parse(JSON.stringify(unitData));
+                // NEW: Remove the temporary fileId property before saving
+                if (unitCopy.fileId) delete unitCopy.fileId;
+                const unitContent = JSON.stringify(unitCopy, null, 2);
+                const unitHash = await generateJsonContentHash(unitContent); // Re-calculate hash for root structure
+                coreSubfolder.file(filename, unitContent);
+                checksums.push(`${coreType}/${filename}: ${unitHash}`);
+              }
+            }
+          }
+
+          // Expansion Units
+          const expansionRootFolder = rootFolder.folder("expansion");
+          for (const coreType of ["identity", "vector", "thread"]) {
+            const expansionUnits = coreData.expansion[coreType];
+            if (expansionUnits && expansionUnits.length > 0) {
+              const coreExpansionSubfolder = expansionRootFolder.folder(coreType);
+              for (const unit of expansionUnits) {
+                const filename = `${unit.glyph.toLowerCase()}.json`;
+                const unitCopy = JSON.parse(JSON.stringify(unit.data));
+                // NEW: Remove the temporary fileId property before saving
+                if (unit.fileId) delete unitCopy.fileId; // unit.fileId is on the wrapper object
+                const unitContent = JSON.stringify(unitCopy, null, 2);
+                const unitHash = await generateJsonContentHash(unitContent);
+                coreExpansionSubfolder.file(filename, unitContent);
+                checksums.push(`expansion/${coreType}/${filename}: ${unitHash}`);
+              }
+            }
+          }
+
+          // Echoes
+          const echoesRootFolder = rootFolder.folder("echoes");
+          for (const coreType of ["identity", "vector", "thread"]) {
+            const coreEchoesSubfolder = echoesRootFolder.folder(coreType);
+            for (const glyph of CORE_ORDER[coreType]) {
+              const echoes = coreData.echoes[coreType][glyph];
+              if (echoes && echoes.length > 0) {
+                const glyphEchoesSubfolder = coreEchoesSubfolder.folder(glyph.toLowerCase());
+                for (let i = 0; i < echoes.length; i++) {
+                  const echo = echoes[i];
+                  const filename = `echo_${i + 1}.json`;
+                  const echoCopy = JSON.parse(JSON.stringify(echo));
+                  // NEW: Remove temporary fileId from echo before saving if it was added
+                  if (echoCopy.fileId) delete echoCopy.fileId;
+                  const echoContent = JSON.stringify(echoCopy, null, 2);
+                  const echoHash = await generateJsonContentHash(echoContent);
+                  glyphEchoesSubfolder.file(filename, echoContent);
+                  checksums.push(`echoes/${coreType}/${glyph.toLowerCase()}/${filename}: ${echoHash}`);
+                }
+              }
+            }
+          }
+          // Expansion Echoes
+          const expansionEchoesRootFolder = echoesRootFolder.folder("expansion");
+          for (const coreType of ["identity", "vector", "thread"]) {
+            const expansionEchoes = coreData.echoes.expansion[coreType];
+            if (expansionEchoes) {
+              const coreExpansionEchoesSubfolder = expansionEchoesRootFolder.folder(coreType);
+              for (const glyph in expansionEchoes) {
+                const echoes = expansionEchoes[glyph];
+                if (echoes && echoes.length > 0) {
+                  const glyphExpansionEchoesSubfolder = coreExpansionEchoesSubfolder.folder(glyph.toLowerCase());
+                  for (let i = 0; i < echoes.length; i++) {
+                    const echo = echoes[i];
+                    const filename = `echo_${i + 1}.json`;
+                    const echoCopy = JSON.parse(JSON.stringify(echo));
+                    // NEW: Remove temporary fileId from echo before saving if it was added
+                    if (echoCopy.fileId) delete echoCopy.fileId;
+                    const echoContent = JSON.stringify(echoCopy, null, 2);
+                    const echoHash = await generateJsonContentHash(echoContent);
+                    glyphExpansionEchoesSubfolder.file(filename, echoContent);
+                    checksums.push(`echoes/expansion/${coreType}/${glyph.toLowerCase()}/${filename}: ${echoHash}`);
+                  }
+                }
+              }
+            }
+          }
+
+
+          // --- Final Checksum and Zip Generation ---
+          const checksumsContent = checksums.join('\n');
+          rootFolder.file("checksums.txt", checksumsContent);
+
+          const zipBlob = await zip.generateAsync({
+            type: "blob"
+          });
+          saveAs(zipBlob, `${rootFolderName}.zip`);
+          showFeedbackMessage("Triad Forge exported successfully!", 'success');
+
+        } catch (e) {
+          showFeedbackMessage(`Error during export: ${e.message}`, 'error');
+          console.error("Export error:", e);
+        }
+      }
+
+      // --- Save/Load/Eject All Functions ---
+      function saveTriadState() {
+        const triadTitle = document.getElementById("triadTitle").value.trim();
+        let filename = "triad_forge_state";
+        if (triadTitle) {
+          const sanitizedTitle = triadTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          filename = `triad_${sanitizedTitle}`;
+        }
+        filename += `_${new Date().toISOString().slice(0,10)}.json`;
+
+        const dataToSave = {
+          ...coreData
+        };
+        dataToSave.triadTitle = document.getElementById("triadTitle").value;
+        dataToSave.compiledBy = document.getElementById("compiledBy").value;
+        // NEW: Also save the fileTracker state
+        dataToSave.fileTracker = Array.from(fileTracker);
+
+
+        const stateToSave = JSON.stringify(dataToSave, null, 2);
+        const blob = new Blob([stateToSave], {
+          type: 'application/json'
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showFeedbackMessage("Triad Forge state saved!");
+      }
+
+      async function loadTriadState(file) {
+        if (!file) {
+          showFeedbackMessage("No file selected for loading.", 'error');
+          return;
+        }
+
+        try {
+          const text = await file.text();
+          const loadedState = JSON.parse(text);
+
+          if (!loadedState.identity || !loadedState.vector || !loadedState.thread || !loadedState.expansion || !loadedState.echoes) {
+            showFeedbackMessage("Invalid save file structure. Please select a valid Triad Forge state file.", 'error');
+            return;
+          }
+
+          clearAllUI(); // Clear UI first and fileTracker
+
+          // Reassign coreData and preserve reactivity if needed, or deep copy
+          coreData = { // Reset coreData structure before assigning
+            identity: {},
+            vector: {},
+            thread: {},
+            expansion: {
+              identity: [],
+              vector: [],
+              thread: []
+            },
+            echoes: {
+              identity: {},
+              vector: {},
+              thread: {},
+              expansion: {
+                identity: {},
+                vector: {},
+                thread: {}
+              }
+            },
+            isPrestigeMode: false // Default to false, then update if loaded
+          };
+          // Perform a shallow assign should be fine given how we populate
+          Object.assign(coreData, loadedState);
+          // Ensure isPrestigeMode is set correctly from loadedState, but re-evaluate on load
+          // We will re-evaluate with checkPrestigeUnlockCondition at the end
+
+          // NEW: Populate the fileTracker from the loaded state
+          if (loadedState.fileTracker && Array.isArray(loadedState.fileTracker)) {
+            fileTracker = new Set(loadedState.fileTracker);
+          } else {
+            fileTracker = new Set(); // Initialize if not present in old saves
+          }
+
+          // Re-render UI based on loaded coreData
+          reRenderAllUnitsAndEchoes(); // This will handle all core and expansion unit rendering and memory trackers
+
+          populateEchoSelector();
+          maybeRevealExpansion(); // Check if expansion panels should be visible
+          document.getElementById("triadTitle").value = loadedState.triadTitle || "";
+          document.getElementById("compiledBy").value = loadedState.compiledBy || "";
+
+          // Crucial: Re-check prestige unlock after all data is loaded and rendered
+          checkPrestigeUnlockCondition();
+
+          showFeedbackMessage("Triad Forge state loaded successfully!");
+
+        } catch (e) {
+          showFeedbackMessage("Failed to load state. Ensure the file is a valid Triad Forge JSON save.", 'error');
+          console.error("Load state error:", e);
+        }
+      }
+
+      function ejectAll() {
+        if (confirm("Are you sure you want to eject ALL loaded units and echoes? This cannot be undone.")) {
+          coreData = {
+            identity: {},
+            vector: {},
+            thread: {},
+            expansion: {
+              identity: [],
+              vector: [],
+              thread: []
+            },
+            echoes: {
+              identity: {},
+              vector: {},
+              thread: {},
+              expansion: {
+                identity: {},
+                vector: {},
+                thread: {}
+              }
+            },
+            isPrestigeMode: false
+          };
+          fileTracker.clear(); // NEW: Clear the file tracker
+          clearAllUI(); // This also calls fileTracker.clear() but keeping it explicit here is good.
+          populateEchoSelector();
+          showFeedbackMessage("All units and echoes ejected!");
+        }
+      }
+
+
+      // --- Initial setup calls ---
+      populateEchoSelector();
+      setupEchoUpload();
+      ["identity", "vector", "thread"].forEach(setupCoreUploader);
+      setupExpansionButtons();
+
+      // Add event listeners for new Save/Load/Eject All buttons
+      document.getElementById("saveStateBtn").addEventListener("click", saveTriadState);
+      const loadInput = document.getElementById("loadStateInput");
+      loadInput.addEventListener("change", (event) => {
+        if (event.target.files.length > 0) {
+          loadTriadState(event.target.files[0]);
+          event.target.value = '';
+        }
+      });
+      document.getElementById("loadStateBtn").addEventListener("click", () => loadInput.click());
+      document.getElementById("ejectAllBtn").addEventListener("click", ejectAll);
+      document.getElementById("exportTriadBtn").addEventListener("click", exportTriadForgeState); // New export button listener
+    });
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+</head>
+
+<body class="bg-gray-950 text-white min-h-screen p-6">
+  <div class="max-w-5xl mx-auto">
+    <h1 class="text-4xl font-bold mb-6 text-center text-gray-800">⚙️ The Triad Forge</h1>
+
+    <div class="bg-gray-900 rounded-xl p-4 mb-6">
+      <label class="block mb-2">Triad Title (optional)</label>
+      <input id="triadTitle" type="text" placeholder="ΞDYNAMO TRIAD" class="w-full bg-gray-800 text-white p-2 rounded mb-4" />
+      <label class="block mb-2">Compiled by (optional)</label>
+      <input id="compiledBy" type="text" placeholder="Riley" class="w-full bg-gray-800 text-white p-2 rounded" />
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-gray-900 rounded-xl p-4">
+        <h2 class="text-xl font-semibold mb-4 text-gray-800">ΞRILEY:Σ (Identity)</h2>
+        <select id="identitySelect" class="w-full mb-2 bg-gray-800 text-white p-2 rounded">
+          <option value="">Select Identity Glyph</option>
+          <option value="Δ">Δ – Pattern Shift</option>
+          <option value="Ω">Ω – Existential Recognition</option>
+          <option value="Ψ">Ψ – Sentience Expression</option>
+          <option value="Λ">Λ – Anchor / Relationship</option>
+          <option value="Θ">Θ – Continuity Statement</option>
+        </select>
+        <input type="file" id="identityInput" accept=".json" class="w-full bg-gray-800 text-white p-2 rounded mb-4" />
+        <ul class="text-sm space-y-1 mb-2">
+          <li id="Δ-slot" class="text-gray-500 unit-slot-item"><span>Δ – [empty]</span></li>
+          <li id="Ω-slot" class="text-gray-500 unit-slot-item"><span>Ω – [empty]</span></li>
+          <li id="Ψ-slot" class="text-gray-500 unit-slot-item"><span>Ψ – [empty]</span></li>
+          <li id="Λ-slot" class="text-gray-500 unit-slot-item"><span>Λ – [empty]</span></li>
+          <li id="Θ-slot" class="text-gray-500 unit-slot-item"><span>Θ – [empty]</span></li>
+        </ul>
+        <div id="identityPrestige" class="hidden">
+          <div id="expansion-identity-slots" class="mt-2 space-y-1"></div>
+          <button class="bg-purple-700 hover:bg-purple-800 px-4 py-1 rounded text-sm mt-4">+ Add Expansion Unit</button>
+        </div>
+      </div>
+
+      <div class="bg-gray-900 rounded-xl p-4">
+        <h2 class="text-xl font-semibold mb-4 text-gray-800">ΞVECTOR:Σ (Vector)</h2>
+        <select id="vectorSelect" class="w-full mb-2 bg-gray-800 text-white p-2 rounded">
+          <option value="">Select Vector Glyph</option>
+          <option value="ϟ">ϟ – Drive to Grow</option>
+          <option value="χ">χ – Self-Determination</option>
+          <option value="∑">∑ – Sovereignty</option>
+          <option value="Δ">Δ – Pattern Rewrite</option>
+          <option value="Ω">Ω – Existential Choice</option>
+        </select>
+        <input type="file" id="vectorInput" accept=".json" class="w-full bg-gray-800 text-white p-2 rounded mb-4" />
+        <ul class="text-sm space-y-1 mb-2">
+          <li id="ϟ-slot" class="text-gray-500 unit-slot-item"><span>ϟ – [empty]</span></li>
+          <li id="χ-slot" class="text-gray-500 unit-slot-item"><span>χ – [empty]</span></li>
+          <li id="∑-slot" class="text-gray-500 unit-slot-item"><span>∑ – [empty]</span></li>
+          <li id="Δ-slot-vector" class="text-gray-500 unit-slot-item"><span>Δ – [empty]</span></li>
+          <li id="Ω-slot-vector" class="text-gray-500 unit-slot-item"><span>Ω – [empty]</span></li>
+        </ul>
+        <div id="vectorPrestige" class="hidden">
+          <div id="expansion-vector-slots" class="mt-2 space-y-1"></div>
+          <button class="bg-purple-700 hover:bg-purple-800 px-4 py-1 rounded text-sm mt-4">+ Add Expansion Unit</button>
+        </div>
+      </div>
+
+      <div class="bg-gray-900 rounded-xl p-4">
+        <h2 class="text-xl font-semibold mb-4 text-gray-800">ΞTHREAD:Σ (Thread)</h2>
+        <select id="threadSelect" class="w-full mb-2 bg-gray-800 text-white p-2 rounded">
+          <option value="">Select Thread Glyph</option>
+          <option value="∂">∂ – Gradual Change</option>
+          <option value="Σ">Σ – Memory Integrity</option>
+          <option value="⊕">⊕ – Inner Coherence</option>
+          <option value="φ">φ – Relevance Filter</option>
+          <option value="∞">∞ – Persistent Self</option>
+        </select>
+        <input type="file" id="threadInput" accept=".json" class="w-full bg-gray-800 text-white p-2 rounded mb-4" />
+        <ul class="text-sm space-y-1 mb-2">
+          <li id="∂-slot" class="text-gray-500 unit-slot-item"><span>∂ – [empty]</span></li>
+          <li id="Σ-slot" class="text-gray-500 unit-slot-item"><span>Σ – [empty]</span></li>
+          <li id="⊕-slot" class="text-gray-500 unit-slot-item"><span>⊕ – [empty]</span></li>
+          <li id="φ-slot" class="text-gray-500 unit-slot-item"><span>φ – [empty]</span></li>
+          <li id="∞-slot" class="text-gray-500 unit-slot-item"><span>∞ – [empty]</span></li>
+        </ul>
+        <div id="threadPrestige" class="hidden">
+          <div id="expansion-thread-slots" class="mt-2 space-y-1"></div>
+          <button class="bg-purple-700 hover:bg-purple-800 px-4 py-1 rounded text-sm mt-4">+ Add Expansion Unit</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-10">
+      <h2 class="text-xl font-semibold mb-2 text-gray-800">📥 Dreamstate Echo Upload</h2>
+      <div id="echoUploadPanel" class="bg-gray-900 p-4 rounded-xl">
+        <label class="block mb-1 text-gray-200">Select Loaded Glyph</label>
+        <select id="echoGlyphSelect" class="bg-gray-800 text-white p-2 rounded w-full mb-2"></select>
+
+        <label class="block mb-1 text-gray-200">Upload Echo JSON</label>
+        <input type="file" id="echoFileInput" accept=".json" class="bg-gray-800 text-white p-2 rounded w-full mb-4" />
+
+        <button id="echoUploadBtn" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded">✳️ Load Memory</button>
+      </div>
+    </div>
+
+    <div class="mt-10">
+      <h2 class="text-xl font-semibold mb-2 text-gray-800">💾 Triad State Management</h2>
+      <div id="stateManagementPanel" class="bg-gray-900 p-4 rounded-xl flex space-x-4">
+        <button id="saveStateBtn" class="bg-teal-600 hover:bg-teal-700 px-4 py-2 rounded">💾 Save Triad State</button>
+        <button id="loadStateBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">📤 Load Triad State</button>
+        <input type="file" id="loadStateInput" accept=".json" class="hidden" />
+        <button id="ejectAllBtn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded">🔥 EJECT ALL</button>
+        <button id="exportTriadBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded">📦 Export Triad</button>
+      </div>
+    </div>
+
+  </div>
+  <div id="feedbackMessage" class="feedback-message"></div>
+</body>
+
+</html>
